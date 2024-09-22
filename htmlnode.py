@@ -1,3 +1,4 @@
+import re
 
 class HTMLNode:
 	def __init__(self, tag = None, value = None, children = None, props = None):
@@ -68,6 +69,12 @@ class ParentNode(HTMLNode):
 		return f"<{self.tag}>{children_html}</{self.tag}>"
 
 
+class TextNode(LeafNode):
+	def __init__(self, content, text_type):
+		super().__init__(tag=None, value=content, children=None, props=None)
+		self.content = content
+		self.text_type = text_type
+
 
 
 text_type_text = "text"
@@ -105,34 +112,65 @@ def text_node_to_html_node(text_node):
 import unittest
 from collections import namedtuple
 
-MockTextNode = namedtuple('MockTextNode', ['text_type', 'text', 'url'])
 
-class TestTextNodeToHtmlNode(unittest.TestCase):
-	def test_text_node(self):
-		text_node = MockTextNode("text", "Hello, world!", None)
-		html_node = text_node_to_html_node(text_node)
-		self.assertIsInstance(html_node, LeafNode)
-		self.assertEqual(html_node.value, "Hello, world!")
-		self.assertIsNone(html_node.tag)
+def extract_markdown_images(text):
+	pattern = r"!\[(.*?)\]\((.*?)\)"
+	matches = re.findall(pattern, text)
+	return matches
+
+def extract_markdown_links(text):
+        pattern = r"(?<!!)\[(.*?)\]\((.*?)\)"
+        matches = re.findall(pattern, text)
+        return matches
 
 
+def split_nodes_image(old_nodes):
+        new_nodes = []
+        for node in old_nodes:
+                images = extract_markdown_images(node.content)
+		if images:
+			content = node.content
+			for alt_text, image_url in images:
+				markdown_pattern = f"![{alt_text}]({image_url})"
+			
+				sections = content.split(markdown_pattern, 1)
 
-	def test_bold_node(self):
-		bold_node = MockTextNode("bold", "Bold text", None)
-		html_node = text_node_to_html_node(bold_node)
-		self.assertIsInstance(html_node, LeafNode)
-		self.assertEqual(html_node.value, "Bold text")
-		self.assertEqual(html_node.tag, "b")
+				if sections[0]:
+					new_nodes.append(TextNode(sections[0], "text" ))
 
-	def test_link_node(self):
-		link_node = MockTextNode("link", "Click here", "https://example.com")
-		html_node = text_node_to_html_node(link_node)
-		self.assertIsInstance(html_node, LeafNode)
-		self.assertEqual(html_node.value, "Click here")
-		self.assertEqual(html_node.tag, "a")
-		self.assertEqual(html_node.props, {"href": "https://example.com"})
+				content = sections[1] if len(sections) > 1 else ""
+			
+			if content:
+				new_nodes.append(TextNode(content, "text"))
 
-	def test_invalid_type(self):
-		invalid_node = MockTextNode("invalid", "Invalid type", None)
-		with self.assertRaises(Exception):
-			text_node_to_html_node(invalid_node)
+		else:
+			new_nodes.append(node)
+
+	return new_nodes
+
+
+def split_nodes_links(old_nodes):
+        new_nodes = []
+        for node in old_nodes:
+                links = extract_markdown_links(node.content)
+                if links:
+                        content = node.content
+                        for link_text, url in links:
+                                markdown_pattern = f"[{link_text}]({url})"
+
+                                sections = content.split(markdown_pattern, 1)
+
+                                if sections[0]:
+                                        new_nodes.append(TextNode(sections[0], "text"))
+				
+				new_nodes.append(TextNode(link_text, "link", url))
+                                content = sections[1] if len(sections) > 1 else ""
+				
+                        if content:
+                                new_nodes.append(TextNode(content, "text"))
+
+                else:
+                        new_nodes.append(node)
+
+        return new_nodes
+
